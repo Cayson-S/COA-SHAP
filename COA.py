@@ -22,7 +22,7 @@ def is_prime(x: int) -> bool:
 def onecoa_prime(d: int, rng: np.random.Generator = None) -> np.ndarray:
     """
     Generate a component orthogonal array (COA) for prime d.
-    Returns an integer array of shape (d*(d-1), d) with values in 1..d (matching R +1).
+    Returns an integer array of shape (d*(d-1), d) with values in 1..d.
     """
     if not is_prime(d):
         raise ValueError("d should be a prime")
@@ -46,8 +46,7 @@ def onecoa_prime(d: int, rng: np.random.Generator = None) -> np.ndarray:
         block = (cz + j) % d
         D[j * (d - 1):(j + 1) * (d - 1), :] = block
 
-    # R returns D + 1 so entries are 1..d
-    return D + 1
+    return D
 
 
 def est_shcoa_prime(d: int, n: int, val: Callable[[Sequence[int], ...], float], *args, rng: np.random.Generator = None) -> np.ndarray:
@@ -61,7 +60,7 @@ def est_shcoa_prime(d: int, n: int, val: Callable[[Sequence[int], ...], float], 
     - args: extra args passed to val(...)
     - rng: optional numpy Generator for reproducible sampling inside onecoa_prime
 
-    Returns: 1 x d numpy array (row vector) of estimated Shapley values (matching R shape).
+    Returns: 1 x d numpy array (row vector) of estimated Shapley values.
     """
     if not is_prime(d):
         raise ValueError("d should be a prime")
@@ -104,7 +103,7 @@ def poly_div(dividend: Sequence[int], divisor: Sequence[int]) -> List[int]:
     Example:
         dividend x^5 + 2 x^3 + 1 -> [1,0,2,0,0,1]
         divisor x^4 + 2 -> [1,0,0,0,2]
-    This returns remainder coefficients (same orientation).
+    This returns remainder coefficients.
     """
     f1 = list(dividend)
     f2 = list(divisor)
@@ -219,7 +218,7 @@ def onecoa(d: int, p: int, f_d: Sequence[int], rng: np.random.Generator = None) 
     - p: prime base
     - f_d: coefficients of primitive polynomial on GF(d), highest->lowest, length r+1
            e.g. for x^2 + x + 2 -> [1,1,2]
-    Returns array shape (d*(d-1), d) with entries in 1..d (matching R +1).
+    Returns array shape (d*(d-1), d) with entries in 1..d.
     """
     # validate p prime
     if not is_prime(p):
