@@ -1,6 +1,7 @@
 from typing import Callable, List, Sequence, Tuple
 import numpy as np
 import itertools
+import galois
 
 
 def is_prime(x: int) -> bool:
@@ -19,7 +20,7 @@ def is_prime(x: int) -> bool:
     return True
 
 
-def onecoa_prime(d: int, rng: np.random.Generator = None) -> np.ndarray:
+def onecoa_prime_gen(d: int, rng: np.random.Generator = None) -> np.ndarray:
     """
     Generate a component orthogonal array (COA) for prime d.
     Returns an integer array of shape (d*(d-1), d) with values in 1..d.
@@ -30,8 +31,10 @@ def onecoa_prime(d: int, rng: np.random.Generator = None) -> np.ndarray:
     if rng is None:
         rng = np.random.default_rng()
 
-    # firstline = c(0, sample(1:(d-1)))
-    # sample(d-1) in R gives a permutation of 1..(d-1)
+    """
+    TODO: discard this function and the prime function and move the generation code below to the shap function so that we do not need to store all of this info.
+    
+    """ # firstline = c(0, sample(1:(d-1)))
     sample_perm = rng.permutation(np.arange(1, d))
     firstline = np.concatenate(([0], sample_perm))  # length d
 
@@ -39,17 +42,20 @@ def onecoa_prime(d: int, rng: np.random.Generator = None) -> np.ndarray:
     for i in range(1, d):  # i corresponds to 1:(d-1)
         # cz[i-1, ] <- (firstline * i) %% d
         cz[i - 1, :] = (firstline * i) % d
+        print("CZ: ", cz)
 
     m = d * (d - 1)
-    D = np.zeros((m, d), dtype=int)
+    D = np.zeros((m, d), dtype=np.uint16)
     for j in range(0, d):  # j = 0:(d-1)
         block = (cz + j) % d
+        for item in block:
+            print("item: ", item)
         D[j * (d - 1):(j + 1) * (d - 1), :] = block
 
     return D
 
 
-def est_shcoa_prime(d: int, n: int, val: Callable[[Sequence[int], ...], float], *args, rng: np.random.Generator = None) -> np.ndarray:
+def est_shcoa_prime(d: int, n: int, val: Callable[[Sequence[int]], float], *args, rng: np.random.Generator = None) -> np.ndarray:
     """
     Estimate Shapley values using COA for prime d.
 
@@ -62,7 +68,7 @@ def est_shcoa_prime(d: int, n: int, val: Callable[[Sequence[int], ...], float], 
 
     Returns: 1 x d numpy array (row vector) of estimated Shapley values.
     """
-    if not is_prime(d):
+    if not galois.is_prime(d):
         raise ValueError("d should be a prime")
 
     m = d * (d - 1)
@@ -74,13 +80,13 @@ def est_shcoa_prime(d: int, n: int, val: Callable[[Sequence[int], ...], float], 
 
     local_rng = rng or np.random.default_rng()
     for t in range(k):
-        coat = onecoa_prime(d, rng=local_rng)  # shape (m, d), entries 1..d
+        coat = onecoa_prime_gen(d, rng=local_rng)  # shape (m, d), entries 1..d
         for l in range(m):
             perml = coat[l, :]  # 1..d sequence
             preC = 0.0
             # iterate i from 1..d (in R): perml[1:i]
             for i in range(1, d + 1):
-                subset = list(perml[:i])  # pass 1-based indices to val to match R
+                subset = perml[:i]  # pass 1-based indices to val to match R
                 delta = float(val(subset, *args)) - preC
                 # add to the Shapley accumulator for the player perml[i-1]
                 player_index = int(perml[i - 1]) - 1  # convert to 0-based index
