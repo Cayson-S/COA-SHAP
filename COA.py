@@ -42,15 +42,13 @@ def onecoa_prime_gen(d: int, rng: np.random.Generator = None) -> np.ndarray:
     for i in range(1, d):  # i corresponds to 1:(d-1)
         # cz[i-1, ] <- (firstline * i) %% d
         cz[i - 1, :] = (firstline * i) % d
-        print("CZ: ", cz)
 
     m = d * (d - 1)
     D = np.zeros((m, d), dtype=np.uint16)
     for j in range(0, d):  # j = 0:(d-1)
         block = (cz + j) % d
         for item in block:
-            print("item: ", item)
-        D[j * (d - 1):(j + 1) * (d - 1), :] = block
+            D[j * (d - 1):(j + 1) * (d - 1), :] = block
 
     return D
 
@@ -71,27 +69,37 @@ def est_shcoa_prime(d: int, n: int, val: Callable[[Sequence[int]], float], *args
     if not galois.is_prime(d):
         raise ValueError("d should be a prime")
 
+    if rng is None:
+        rng = np.random.default_rng()
+    
     m = d * (d - 1)
     if n % m != 0:
         raise ValueError("n should be a multiple of d*(d-1)")
 
     k = n // m
     sh = np.zeros(d, dtype=float)  # zero-based for players 0..d-1
-
+    sample_perm = rng.permutation(np.arange(1, d))
+    firstline = np.concatenate(([0], sample_perm))  # length d
+    cz = np.zeros((d - 1, d), dtype=int)
+    for i in range(1, d):  # i corresponds to 1:(d-1)
+        # cz[i-1, ] <- (firstline * i) %% d
+        cz[i - 1, :] = (firstline * i) % d
+        
     local_rng = rng or np.random.default_rng()
     for t in range(k):
         coat = onecoa_prime_gen(d, rng=local_rng)  # shape (m, d), entries 1..d
-        for l in range(m):
-            perml = coat[l, :]  # 1..d sequence
-            preC = 0.0
-            # iterate i from 1..d (in R): perml[1:i]
-            for i in range(1, d + 1):
-                subset = perml[:i]  # pass 1-based indices to val to match R
-                delta = float(val(subset, *args)) - preC
-                # add to the Shapley accumulator for the player perml[i-1]
-                player_index = int(perml[i - 1]) - 1  # convert to 0-based index
-                sh[player_index] += delta
-                preC += delta
+        #for l in range(m):
+        for j in range(0, d):  # j = 0:(d-1)
+            block = (cz + j) % d
+            for perml in block:
+                preC = 0.0
+                # iterate i from 1..d (in R): perml[1:i]
+                for i in range(1, d + 1):
+                    delta = float(val(perml[:i], *args)) - preC
+                    # add to the Shapley accumulator for the player perml[i-1]
+                    player_index = int(perml[i - 1]) - 1  # convert to 0-based index
+                    sh[player_index] += delta
+                    preC += delta
 
     sh = sh / float(n)
     # return as 1 x d row vector to mimic t(as.matrix(sh)) in R
