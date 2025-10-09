@@ -3,56 +3,6 @@ import numpy as np
 import itertools
 import galois
 
-
-def is_prime(x: int) -> bool:
-    """Return True if x is prime, False otherwise."""
-    if x < 2:
-        return False
-    if x in (2, 3):
-        return True
-    if x % 2 == 0:
-        return False
-    # check up to floor(x/2) in the R original; we can stop at sqrt(x)
-    r = int(np.floor(np.sqrt(x)))
-    for i in range(3, r + 1, 2):
-        if x % i == 0:
-            return False
-    return True
-
-
-def onecoa_prime_gen(d: int, rng: np.random.Generator = None) -> np.ndarray:
-    """
-    Generate a component orthogonal array (COA) for prime d.
-    Returns an integer array of shape (d*(d-1), d) with values in 1..d.
-    """
-    if not is_prime(d):
-        raise ValueError("d should be a prime")
-
-    if rng is None:
-        rng = np.random.default_rng()
-
-    """
-    TODO: discard this function and the prime function and move the generation code below to the shap function so that we do not need to store all of this info.
-    
-    """ # firstline = c(0, sample(1:(d-1)))
-    sample_perm = rng.permutation(np.arange(1, d))
-    firstline = np.concatenate(([0], sample_perm))  # length d
-
-    cz = np.zeros((d - 1, d), dtype=int)
-    for i in range(1, d):  # i corresponds to 1:(d-1)
-        # cz[i-1, ] <- (firstline * i) %% d
-        cz[i - 1, :] = (firstline * i) % d
-
-    m = d * (d - 1)
-    D = np.zeros((m, d), dtype=np.uint16)
-    for j in range(0, d):  # j = 0:(d-1)
-        block = (cz + j) % d
-        for item in block:
-            D[j * (d - 1):(j + 1) * (d - 1), :] = block
-
-    return D
-
-
 def est_shcoa_prime(d: int, n: int, val: Callable[[Sequence[int]], float], *args, rng: np.random.Generator = None) -> np.ndarray:
     """
     Estimate Shapley values using COA for prime d.
@@ -69,8 +19,7 @@ def est_shcoa_prime(d: int, n: int, val: Callable[[Sequence[int]], float], *args
     if not galois.is_prime(d):
         raise ValueError("d should be a prime")
 
-    if rng is None:
-        rng = np.random.default_rng()
+    local_rng = rng or np.random.default_rng()
     
     m = d * (d - 1)
     if n % m != 0:
@@ -78,29 +27,24 @@ def est_shcoa_prime(d: int, n: int, val: Callable[[Sequence[int]], float], *args
 
     k = n // m
     sh = np.zeros(d, dtype=float)  # zero-based for players 0..d-1
-    sample_perm = rng.permutation(np.arange(1, d))
+    sample_perm = local_rng.permutation(np.arange(1, d))
     firstline = np.concatenate(([0], sample_perm))  # length d
-    cz = np.zeros((d - 1, d), dtype=int)
+    cz = np.zeros((d - 1, d), dtype=np.int16)
     for i in range(1, d):  # i corresponds to 1:(d-1)
-        # cz[i-1, ] <- (firstline * i) %% d
         cz[i - 1, :] = (firstline * i) % d
         
-    local_rng = rng or np.random.default_rng()
     for t in range(k):
-        coat = onecoa_prime_gen(d, rng=local_rng)  # shape (m, d), entries 1..d
-        #for l in range(m):
         for j in range(0, d):  # j = 0:(d-1)
             block = (cz + j) % d
-            for perml in block:
+            for perml in block:  # values 1..d
                 preC = 0.0
                 # iterate i from 1..d (in R): perml[1:i]
-                for i in range(1, d + 1):
-                    delta = float(val(perml[:i], *args)) - preC
-                    # add to the Shapley accumulator for the player perml[i-1]
-                    player_index = int(perml[i - 1]) - 1  # convert to 0-based index
-                    sh[player_index] += delta
-                    preC += delta
-
+                delta = float(val(perml[:i], *args)) - preC
+                # add to the Shapley accumulator for the player perml[i-1]
+                player_index = int(perml[i - 1]) - 1  # convert to 0-based index
+                sh[player_index] += delta
+                preC += delta
+    
     sh = sh / float(n)
     # return as 1 x d row vector to mimic t(as.matrix(sh)) in R
     return sh.reshape(1, -1)

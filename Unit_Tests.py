@@ -2,10 +2,8 @@ import COA
 import pytest as pt
 import numpy as np
 import networkx as nx
+import timeit as t
 np.set_printoptions(threshold=10000)
-
-def fail():
-    raise SystemExit(1)
 
 # Unit tests
 class TestCOA:
@@ -26,15 +24,16 @@ class TestCOA:
     
     #def test_est_shcoa_prime(self, val):
 
-temp_adjacent = np.zeros((5, 5), dtype=int)
+def adjacent():
+    temp_adjacent = np.zeros((5, 5), dtype=int)
 
-# 2. Add directed edges (using 0-based indexing in Python)
-temp_adjacent[0, [1, 2, 4]] = 1
-temp_adjacent[1, 3] = 1
-temp_adjacent[2, 4] = 1
+        # 2. Add directed edges (using 0-based indexing in Python)
+    temp_adjacent[0, [1, 2, 4]] = 1
+    temp_adjacent[1, 3] = 1
+    temp_adjacent[2, 4] = 1
 
-# 3. Make it symmetric (undirected)
-temp_adjacent = temp_adjacent + temp_adjacent.T
+    # 3. Make it symmetric (undirected)
+    return temp_adjacent + temp_adjacent.T
 
 def temp_val(sets, adjacent):
     sets = np.array(sets)
@@ -57,5 +56,10 @@ def temp_val(sets, adjacent):
     return int(connected)
 
 # [[ 0.4   0.1  -0.1   0.05  0.55]]
-# TODO check the time it takes to complete now vs the original. Can we speed it up? What about memory usage?
-print(COA.est_shcoa_prime(5, 20, temp_val, temp_adjacent))
+print(COA.est_shcoa_prime(5, 20, temp_val, adjacent()))
+
+
+
+# Elapsed time with changes:  0.004872542999219149
+# Elapsed time without changes:  0.12018242500023917
+#print("Elapsed time: ", t.timeit(stmt = "COA.est_shcoa_prime(5, 20, temp_val, adjacent())", setup = "from __main__ import COA, temp_val, adjacent", number = 100)/100)
