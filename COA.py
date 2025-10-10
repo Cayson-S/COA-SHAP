@@ -25,29 +25,27 @@ def est_shcoa_prime(d: int, n: int, val: Callable[[Sequence[int]], float], *args
     if n % m != 0:
         raise ValueError("n should be a multiple of d*(d-1)")
 
-    k = n // m
     sh = np.zeros(d, dtype=float)  # zero-based for players 0..d-1
     sample_perm = local_rng.permutation(np.arange(1, d))
     firstline = np.concatenate(([0], sample_perm))  # length d
     cz = np.zeros((d - 1, d), dtype=np.int16)
     for i in range(1, d):  # i corresponds to 1:(d-1)
         cz[i - 1, :] = (firstline * i) % d
-        
-    for t in range(k):
-        for j in range(0, d):  # j = 0:(d-1)
-            block = (cz + j) % d
-            for perml in block:  # values 1..d
-                preC = 0.0
-                # iterate i from 1..d (in R): perml[1:i]
+    
+    for j in range(d):  # j = 0:(d-1)
+        block = (cz + j) % d
+        for perml in block:  # values 1..d
+            preC = 0.0
+            for i in range(1, d + 1):
                 delta = float(val(perml[:i], *args)) - preC
                 # add to the Shapley accumulator for the player perml[i-1]
-                player_index = int(perml[i - 1]) - 1  # convert to 0-based index
+                player_index = int(perml[i-1])
                 sh[player_index] += delta
                 preC += delta
     
     sh = sh / float(n)
     # return as 1 x d row vector to mimic t(as.matrix(sh)) in R
-    return sh.reshape(1, -1)
+    return  sh.reshape(1, -1)
 
 
 # ---------------------------

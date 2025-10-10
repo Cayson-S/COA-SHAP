@@ -56,9 +56,10 @@ def temp_val(sets, adjacent):
     return int(connected)
 
 # [[ 0.4   0.1  -0.1   0.05  0.55]]
+# [[ 0.6  0.4  0.  -0.1  0.1]]
 print(COA.est_shcoa_prime(5, 20, temp_val, adjacent()))
 
-
+ 
 
 # Elapsed time with changes:  0.004872542999219149
 # Elapsed time without changes:  0.12018242500023917
