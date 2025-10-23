@@ -25,12 +25,14 @@ class TestCOA:
     #def test_est_shcoa_prime(self, val):
 
 def adjacent():
-    temp_adjacent = np.zeros((5, 5), dtype=int)
-
+    temp_adjacent = np.zeros((8, 8), dtype=int)
         # 2. Add directed edges (using 0-based indexing in Python)
-    temp_adjacent[0, [1, 2, 4]] = 1
-    temp_adjacent[1, 3] = 1
-    temp_adjacent[2, 4] = 1
+    #temp_adjacent[0, [1, 2, 4]] = 1
+    #temp_adjacent[1, 3] = 1
+    #temp_adjacent[2, 4] = 1
+    temp_adjacent[0, [5, 6, 7]] = 1
+    temp_adjacent[1, [6]] = 1
+    temp_adjacent[[3, 5, 6], [7]] = 1
 
     # 3. Make it symmetric (undirected)
     return temp_adjacent + temp_adjacent.T
@@ -57,10 +59,9 @@ def temp_val(sets, adjacent):
 
 # [[ 0.4   0.1  -0.1   0.05  0.55]]
 # [[ 0.6  0.4  0.  -0.1  0.1]]
-print(COA.est_shcoa_prime(5, 20, temp_val, adjacent()))
+#print(COA.est_shcoa_prime(5, 20, temp_val, adjacent()))
 
- 
-
+print(COA.est_shcoa(8, 112, temp_val, 2, [1, 0, 1, 1], adjacent()))
 # Elapsed time with changes:  0.004872542999219149
 # Elapsed time without changes:  0.12018242500023917
 #print("Elapsed time: ", t.timeit(stmt = "COA.est_shcoa_prime(5, 20, temp_val, adjacent())", setup = "from __main__ import COA, temp_val, adjacent", number = 100)/100)

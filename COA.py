@@ -32,6 +32,8 @@ def est_shcoa_prime(d: int, n: int, val: Callable[[Sequence[int]], float], *args
     for i in range(1, d):  # i corresponds to 1:(d-1)
         cz[i - 1, :] = (firstline * i) % d
     
+    print(cz)
+    
     for j in range(d):  # j = 0:(d-1)
         block = (cz + j) % d
         for perml in block:  # values 1..d
@@ -39,12 +41,10 @@ def est_shcoa_prime(d: int, n: int, val: Callable[[Sequence[int]], float], *args
             for i in range(1, d + 1):
                 delta = float(val(perml[:i], *args)) - preC
                 # add to the Shapley accumulator for the player perml[i-1]
-                player_index = int(perml[i-1])
-                sh[player_index] += delta
+                sh[int(perml[i-1])] += delta
                 preC += delta
     
     sh = sh / float(n)
-    # return as 1 x d row vector to mimic t(as.matrix(sh)) in R
     return  sh.reshape(1, -1)
 
 
@@ -143,7 +143,7 @@ def gfpoly_add(f1: Sequence[int], f2: Sequence[int], s: int) -> List[int]:
 # finite field COA (prime-power d = p^r)
 # ---------------------------
 
-def _all_field_elements(p: int, r: int) -> List[Tuple[int, ...]]:
+def _all_field_elements(p: int, r: int) -> List[Tuple[int]]:
     """Return list of all r-length tuples with entries 0..p-1 in lexicographic order from itertools.product.
        Each tuple represents polynomial coefficients highest->lowest.
     """
@@ -177,7 +177,7 @@ def onecoa(d: int, p: int, f_d: Sequence[int], rng: np.random.Generator = None) 
     Returns array shape (d*(d-1), d) with entries in 1..d.
     """
     # validate p prime
-    if not is_prime(p):
+    if not galois.is_prime(p):
         raise ValueError("p should be prime")
 
     # compute r such that p^r == d
@@ -197,16 +197,16 @@ def onecoa(d: int, p: int, f_d: Sequence[int], rng: np.random.Generator = None) 
         # for prime p, fields are simple integer modulo operations (0..p-1)
         M_d = np.zeros((p, p), dtype=int)
         A_d = np.zeros((p, p), dtype=int)
-        for i in range(1, p + 1):
-            for j in range(i + 1, p + 1):
-                M_val = ((i - 1) * (j - 1)) % p
-                A_val = (i + j - 2) % p
-                M_d[i - 1, j - 1] = M_val
-                M_d[j - 1, i - 1] = M_val
-                A_d[i - 1, j - 1] = A_val
-                A_d[j - 1, i - 1] = A_val
-            M_d[i - 1, i - 1] = ((i - 1) ** 2) % p
-            A_d[i - 1, i - 1] = (2 * (i - 1)) % p
+        for i in range(p):
+            for j in range(i, p):
+                M_val = ((i) * (j)) % p
+                A_val = (i + j) % p
+                M_d[i, j] = M_val
+                M_d[j, i] = M_val
+                A_d[i, j] = A_val
+                A_d[j, i] = A_val
+            M_d[i, i] = (i ** 2) % p
+            A_d[i, i] = (2 * i) % p
     else:
         # r > 1: represent elements as polynomials with coefficients 0..p-1, length r
         entries = _all_field_elements(p, r)  # list of tuples length d
@@ -214,11 +214,9 @@ def onecoa(d: int, p: int, f_d: Sequence[int], rng: np.random.Generator = None) 
         tuple_to_index = {_coeffs_to_index(t, p, r): idx for idx, t in enumerate(entries)}
         # pre-generate list of coefficient lists for each element
         entries_list = [list(t) for t in entries]
-
-        # Build M1 and A1 similar to R code: d x (d*r) arrays encoding product/division intermediate
-        # But instead of replicating large intermediate matrices, we'll directly compute M_d and A_d
-        M_d = np.zeros((d, d), dtype=int)
-        A_d = np.zeros((d, d), dtype=int)
+        
+        M_d = np.zeros((d, d*r), dtype=int)
+        A_d = np.zeros((d, d*r), dtype=int)
 
         for i in range(d):
             for j in range(d):
@@ -241,33 +239,20 @@ def onecoa(d: int, p: int, f_d: Sequence[int], rng: np.random.Generator = None) 
 
     nr = d * (d - 1)
     coa = np.zeros((nr, d), dtype=int)
-    # R loops:
-    # for i in 1:d:
-    #   for j in 1:(d-1):
-    #     for k in 1:d:
-    #       coa[(i-1)*(d-1)+j,k] <- A_d[i, M_d[j+1, firstr[k]+1]+1]
-    # Note: R matrices are 1-based; M_d and A_d entries are values in 0..d-1 (element values)
     for i in range(0, d):
         for j in range(1, d):  # j runs 1..d-1 (R), so here 1..d-1
             row_idx = i * (d - 1) + (j - 1)
             for k in range(0, d):
-                # Using R indexing equivalences:
-                # R: A_d[i, M_d[j+1, firstr[k]+1]+1]
-                # convert to 0-based indices:
-                # A_d row: i (0-based) -> OK
-                # M_d row index: j+1 in R -> j+1 -1 = j (0-based)
-                # firstr[k]+1 in R is (firstr[k])+1 -> minus 1 for 0-based gives firstr[k]
-                # M_d[j, firstr[k]] -> yields element value e (0..d-1)
                 e = M_d[j, int(firstr[k])]
                 # Then A_d[i, e] (both 0-based indices) -> returns element value (0..d-1)
                 val_elem = A_d[i, e]
                 coa[row_idx, k] = val_elem
 
     # R returns coa + 1 to shift 0..d-1 -> 1..d
-    return coa + 1
+    return coa
 
 
-def est_shcoa(d: int, n: int, val: Callable[[Sequence[int], ...], float], p: int, f_d: Sequence[int], *args, rng: np.random.Generator = None) -> np.ndarray:
+def est_shcoa(d: int, n: int, val: Callable[[Sequence[int]], float], p: int, f_d: Sequence[int], *args, rng: np.random.Generator = None) -> np.ndarray:
     """
     Estimate Shapley values using COA for prime-power d (= p^r)
     - d: number of players (must equal p^r)
@@ -309,10 +294,10 @@ def est_shcoa(d: int, n: int, val: Callable[[Sequence[int], ...], float], p: int
             perml = coat[l, :]  # values 1..d
             preC = 0.0
             for i in range(1, d + 1):
-                subset = list(perml[:i])  # 1-based indices for val
+                subset = list(perml[:i])
                 delta = float(val(subset, *args)) - preC
-                player_index = int(perml[i - 1]) - 1
-                sh[player_index] += delta
+                #player_index = int(perml[i - 1]) - 1
+                sh[int(perml[i - 1])] += delta
                 preC += delta
 
     sh = sh / float(n)
