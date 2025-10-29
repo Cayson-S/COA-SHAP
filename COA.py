@@ -32,8 +32,6 @@ def est_shcoa_prime(d: int, n: int, val: Callable[[Sequence[int]], float], *args
     for i in range(1, d):  # i corresponds to 1:(d-1)
         cz[i - 1, :] = (firstline * i) % d
     
-    print(cz)
-    
     for j in range(d):  # j = 0:(d-1)
         block = (cz + j) % d
         for perml in block:  # values 1..d
@@ -215,8 +213,8 @@ def onecoa(d: int, p: int, f_d: Sequence[int], rng: np.random.Generator = None) 
         # pre-generate list of coefficient lists for each element
         entries_list = [list(t) for t in entries]
         
-        M_d = np.zeros((d, d*r), dtype=int)
-        A_d = np.zeros((d, d*r), dtype=int)
+        M_d = np.zeros((d, d), dtype=int)
+        A_d = np.zeros((d, d), dtype=int)
 
         for i in range(d):
             for j in range(d):
@@ -232,24 +230,7 @@ def onecoa(d: int, p: int, f_d: Sequence[int], rng: np.random.Generator = None) 
                 idx2 = _coeffs_to_index(summ, p, r)
                 A_d[i, j] = idx2
 
-    # Construction of COA
-    # firstr <- c(0, sample(d-1)) where sample(d-1) is permutation of 1..(d-1)
-    sample_perm = rng.permutation(np.arange(1, d))
-    firstr = np.concatenate(([0], sample_perm))  # length d, values in 0..d-1
-
-    nr = d * (d - 1)
-    coa = np.zeros((nr, d), dtype=int)
-    for i in range(0, d):
-        for j in range(1, d):  # j runs 1..d-1 (R), so here 1..d-1
-            row_idx = i * (d - 1) + (j - 1)
-            for k in range(0, d):
-                e = M_d[j, int(firstr[k])]
-                # Then A_d[i, e] (both 0-based indices) -> returns element value (0..d-1)
-                val_elem = A_d[i, e]
-                coa[row_idx, k] = val_elem
-
-    # R returns coa + 1 to shift 0..d-1 -> 1..d
-    return coa
+    return M_d, A_d
 
 
 def est_shcoa(d: int, n: int, val: Callable[[Sequence[int]], float], p: int, f_d: Sequence[int], *args, rng: np.random.Generator = None) -> np.ndarray:
@@ -289,16 +270,25 @@ def est_shcoa(d: int, n: int, val: Callable[[Sequence[int]], float], p: int, f_d
     local_rng = rng or np.random.default_rng()
 
     for t in range(k):
-        coat = onecoa(d, p, f_d, rng=local_rng)
-        for l in range(m):
-            perml = coat[l, :]  # values 1..d
-            preC = 0.0
-            for i in range(1, d + 1):
-                subset = list(perml[:i])
-                delta = float(val(subset, *args)) - preC
-                #player_index = int(perml[i - 1]) - 1
-                sh[int(perml[i - 1])] += delta
-                preC += delta
+        M_d, A_d = onecoa(d, p, f_d, rng=local_rng)
+        # Construction of COA
+        sample_perm = local_rng.permutation(np.arange(1, d))
+        firstr = np.concatenate(([0], sample_perm))  # length d, values in 0..d-1
+        
+        for i in range(0, d):
+            for j in range(1, d):
+                perml = np.zeros(d, dtype=int)
+                for k in range(0, d):
+                    e = M_d[j, int(firstr[k])]
+                    perml[k] = A_d[i, e]
+                
+                preC = 0.0
+                for x in range(1, d + 1):
+                    subset = perml[:x]
+                    delta = float(val(subset, *args)) - preC
+                    player_index = int(perml[x - 1]) - 1
+                    sh[int(perml[x - 1])] += delta
+                    preC += delta
 
     sh = sh / float(n)
     return sh.reshape(1, -1)
