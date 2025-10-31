@@ -9,7 +9,6 @@ class COAExplainer():
         - d: prime number of players
         - n: sample size; must be multiple of d*(d-1)
         - val: function sets -> value; `sets` is a sequence of player indices (1..d) in the order used by COA
-            The R code passes perml[1:i] (1-based indices). Here val receives a Python list of 1-based indices.
         - args: extra args passed to val(...)
         - rng: optional numpy Generator for reproducible sampling inside onecoa_prime
         """
@@ -67,7 +66,6 @@ class COAExplainer():
         d1 = len(f1) - 1
         d2 = len(f2) - 1
         if d1 < d2:
-            # pad front of f1 so degrees match (R prepends zeros)
             f1 = [0] * (d2 - d1) + f1
             d1 = d2
 
@@ -77,8 +75,6 @@ class COAExplainer():
         b = [0] * (dd + 1)
 
         for i in range(dd + 1):
-            # leading coefficient division: divisend[0] / divisor[0]
-            # R uses plain arithmetic, not mod; keep float if necessary, but original likely integer arithmetic
             if divisor[0] == 0:
                 raise ZeroDivisionError("Divisor leading coefficient is zero")
             b_i = divisend[0] / divisor[0]
@@ -89,9 +85,6 @@ class COAExplainer():
             # drop the first element (shift)
             divisend = divisend[1:]
 
-        # divisend is remainder (length d2)
-        # If elements are nearly integers, convert to int
-        # But we leave them as ints if they are exact ints
         rem = [int(x) if abs(x - round(x)) < 1e-12 else x for x in divisend]
         return rem
 
@@ -113,8 +106,6 @@ class COAExplainer():
         d1 = len(f1)
         d2 = len(f2)
         hd = d1 + d2 - 1
-        # convolution (but highest->lowest). We can align degrees:
-        # use indices such that coeff for x^{deg} corresponds to index 0
         res = [0] * hd
         for i in range(d1):
             for j in range(d2):
@@ -143,7 +134,6 @@ class COAExplainer():
         """Return list of all r-length tuples with entries 0..p-1 in lexicographic order from itertools.product.
         Each tuple represents polynomial coefficients highest->lowest.
         """
-        # itertools.product yields tuples where the leftmost element changes slowest; rightmost changes fastest.
         return list(itertools.product(range(p), repeat=r))
 
     def _coeffs_to_index(self, coeffs: Sequence[int], p: int, r: int) -> int:
@@ -151,7 +141,7 @@ class COAExplainer():
         val = 0
         for c in coeffs:
             val = val * p + int(c)
-        return val  # 0-based index
+        return val
 
     def _index_to_coeffs(self, index: int, p: int, r: int) -> List[int]:
         """Convert 0-based index to coefficient vector of length r (highest->lowest)."""
