@@ -11,6 +11,7 @@ class COAExplainer():
         - val: function sets -> value; `sets` is a sequence of player indices (1..d) in the order used by COA
         - args: extra args passed to val(...)
         - rng: optional numpy Generator for reproducible sampling inside onecoa_prime
+        This function initilizes the COAExplainer object for estimating Shapley values using the COA method for prime d.
         """
         self.d = d
         self.n = n
