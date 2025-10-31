@@ -12,6 +12,7 @@ class COAExplainer():
             The R code passes perml[1:i] (1-based indices). Here val receives a Python list of 1-based indices.
         - args: extra args passed to val(...)
         - rng: optional numpy Generator for reproducible sampling inside onecoa_prime
+        This function initilizes the COAExplainer object for estimating Shapley values using the COA method for prime d.
         """
         self.d = d
         self.n = n
