@@ -86,6 +86,9 @@ class COAExplainer():
             # drop the first element (shift)
             divisend = divisend[1:]
 
+        # divisend is remainder (length d2)
+        # If elements are nearly integers, convert to int
+        # But we leave them as ints if they are exact ints
         rem = [int(x) if abs(x - round(x)) < 1e-12 else x for x in divisend]
         return rem
 
