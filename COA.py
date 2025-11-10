@@ -35,17 +35,17 @@ class COAExplainer():
         sample_perm = self.rng.permutation(np.arange(1, self.d))
         firstline = np.concatenate(([0], sample_perm))  # length d
         cz = np.zeros((self.d - 1, self.d), dtype=np.int16)
-        for i in range(1, self.d):  # i corresponds to 1:(d-1)
+        for i in range(1, self.d):
             cz[i - 1, :] = (firstline * i) % self.d
     
-        for j in range(self.d):  # j = 0:(d-1)
+        for j in range(self.d):
             block = (cz + j) % self.d
-            for perml in block:  # values 1..d
+            for perml in block:
                 preC = 0.0
                 for i in range(1, self.d + 1):
                     delta = float(self.val(perml[:i], *args)) - preC
                     # add to the Shapley accumulator for the player perml[i-1]
-                    sh[int(perml[i-1])] += delta
+                    sh[int(perml[i - 1]) - 1] += delta
                     preC += delta
     
         sh = sh / float(self.n)
@@ -271,7 +271,6 @@ class COAExplainer():
                     for x in range(1, self.d + 1):
                         subset = perml[:x]
                         delta = float(self.val(subset, *args)) - preC
-                        player_index = int(perml[x - 1]) - 1
                         sh[int(perml[x - 1])] += delta
                         preC += delta
 
