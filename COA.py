@@ -19,6 +19,21 @@ class COAExplainer():
         self.val = val
         self.rng = rng or np.random.default_rng()
     
+    def onecoa_prime_gen(self):
+        """
+        Generates the COA one line at a time and yeilds to not save it in memory.
+        Returns: a 1xd numpy array (row vector) of each combination of players.
+        """
+        sample_perm = self.rng.permutation(np.arange(1, self.d))
+        firstline = np.concatenate(([0], sample_perm))  # length d
+        row = np.empty(self.d, dtype=np.int16)
+        
+        for j in range(self.d):
+            for i in range(1, self.d):
+                row = (firstline * i + j) % self.d
+                # To save on memory and runtime we yield instead of returning values
+                yield row
+    
     def est_shcoa_prime(self, *args) -> np.ndarray:
         """
         Estimate Shapley values using COA for prime d.
@@ -32,22 +47,16 @@ class COAExplainer():
             raise ValueError("n should be a multiple of d*(d-1)")
 
         sh = np.zeros(self.d, dtype=float)  # zero-based for players 0..d-1
-        sample_perm = self.rng.permutation(np.arange(1, self.d))
-        firstline = np.concatenate(([0], sample_perm))  # length d
-        cz = np.zeros((self.d - 1, self.d), dtype=np.int16)
-        for i in range(1, self.d):
-            cz[i - 1, :] = (firstline * i) % self.d
-    
-        for j in range(self.d):
-            block = (cz + j) % self.d
-            for perml in block:
-                preC = 0.0
-                for i in range(1, self.d + 1):
-                    delta = float(self.val(perml[:i], *args)) - preC
-                    # add to the Shapley accumulator for the player perml[i-1]
-                    sh[int(perml[i - 1]) - 1] += delta
-                    preC += delta
-    
+                
+        for perml in self.onecoa_prime_gen():  # values 1..d
+            preC = 0.0
+            for i in range(1, self.d + 1):
+                # Convert to a list to save on memory space
+                delta = float(self.val(perml[:i].tolist(), *args)) - preC
+                # add to the Shapley accumulator for the player perml[i-1]
+                sh[int(perml[i-1]) - 1] += delta
+                preC += delta
+
         sh = sh / float(self.n)
         return  sh.reshape(1, -1)
 
