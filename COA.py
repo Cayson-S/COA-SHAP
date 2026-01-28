@@ -17,47 +17,6 @@ class COAExplainer():
         self.n = n
         self.val = val
         self.rng = rng or np.random.default_rng()
-    
-    def onecoa_prime_gen(self):
-        """
-        Generates the COA one line at a time and yeilds to not save it in memory.
-        Returns: a 1xd numpy array (row vector) of each combination of players.
-        """
-        sample_perm = self.rng.permutation(np.arange(1, self.d))
-        firstline = np.concatenate(([0], sample_perm))  # length d
-        row = np.empty(self.d, dtype=np.int16)
-        
-        for j in range(self.d):
-            for i in range(1, self.d):
-                row = (firstline * i + j) % self.d
-                # To save on memory and runtime we yield instead of returning values
-                yield row
-    
-    def est_shcoa_prime(self, *args) -> np.ndarray:
-        """
-        Estimate Shapley values using COA for prime d.
-        Returns: 1 x d numpy array (row vector) of estimated Shapley values.
-        """
-        if not galois.is_prime(self.d):
-            raise ValueError("d should be a prime")
-    
-        m = self.d * (self.d - 1)
-        if self.n % m != 0:
-            raise ValueError("n should be a multiple of d*(d-1)")
-
-        sh = np.zeros(self.d, dtype=float)  # zero-based for players 0..d-1
-                
-        for perml in self.onecoa_prime_gen():  # values 1..d
-            preC = 0.0
-            for i in range(1, self.d + 1):
-                # Convert to a list to save on memory space
-                delta = float(self.val(perml[:i].tolist(), *args)) - preC
-                # add to the Shapley accumulator for the player perml[i-1]
-                sh[int(perml[i-1]) - 1] += delta
-                preC += delta
-
-        sh = sh / float(self.n)
-        return  sh.reshape(1, -1)
 
     # ---------------------------
     # polynomial operations (coeff vectors highest->lowest)
@@ -164,6 +123,20 @@ class COAExplainer():
             index //= p
         return coeffs
 
+    def onecoa_prime_gen(self):
+        """
+        Generates the COA one line at a time and yeilds to not save it in memory.
+        Returns: a 1xd numpy array (row vector) of each combination of players.
+        """
+        sample_perm = self.rng.permutation(np.arange(1, self.d))
+        firstline = np.concatenate(([0], sample_perm))  # length d
+        row = np.empty(self.d, dtype=np.int16)
+        
+        for j in range(self.d):
+            for i in range(1, self.d):
+                row = (firstline * i + j) % self.d
+                yield row
+    
     def onecoa(self, p: int, f_d: Sequence[int], rng: np.random.Generator = None) -> np.ndarray:
         """
         Generate COA for d = p^r (prime-power).
@@ -172,10 +145,6 @@ class COAExplainer():
             e.g. for x^2 + x + 2 -> [1,1,2]
         Returns array shape (d*(d-1), d) with entries in 1..d.
         """
-        # validate p prime
-        if not galois.is_prime(p):
-            raise ValueError("p should be prime")
-
         # compute r such that p^r == d
         r = 0
         tmp = 1
@@ -189,96 +158,103 @@ class COAExplainer():
             rng = np.random.default_rng()
 
         # Build multiplication (M_d) and addition (A_d) tables on GF(d)
-        if r == 1:
-            # for prime p, fields are simple integer modulo operations (0..p-1)
-            M_d = np.zeros((p, p), dtype=int)
-            A_d = np.zeros((p, p), dtype=int)
-            for i in range(p):
-                for j in range(i, p):
-                    M_val = ((i) * (j)) % p
-                    A_val = (i + j) % p
-                    M_d[i, j] = M_val
-                    M_d[j, i] = M_val
-                    A_d[i, j] = A_val
-                    A_d[j, i] = A_val
-                M_d[i, i] = (i ** 2) % p
-                A_d[i, i] = (2 * i) % p
-        else:
-            # r > 1: represent elements as polynomials with coefficients 0..p-1, length r
-            entries = self._all_field_elements(p, r)  # list of tuples length d
-            # build maps from tuple->index quickly via base-p encoding
-            tuple_to_index = {self._coeffs_to_index(t, p, r): idx for idx, t in enumerate(entries)}
-            # pre-generate list of coefficient lists for each element
-            entries_list = [list(t) for t in entries]
-            
-            M_d = np.zeros((self.d, self.d), dtype=int)
-            A_d = np.zeros((self.d, self.d), dtype=int)
+        # r > 1: represent elements as polynomials with coefficients 0..p-1, length r
+        entries = self._all_field_elements(p, r)  # list of tuples length d
+        # build maps from tuple->index quickly via base-p encoding
+        #tuple_to_index = {self._coeffs_to_index(t, p, r): idx for idx, t in enumerate(entries)}
+        # pre-generate list of coefficient lists for each element
+        entries_list = [list(t) for t in entries]
+        
+        M_d = np.zeros((self.d, self.d), dtype = np.int16)
+        A_d = np.zeros((self.d, self.d), dtype = np.int16)
 
-            for i in range(self.d):
-                for j in range(self.d):
-                    # multiply entry i and entry j as polynomials (coeff highest->lowest)
-                    prod = self.gfpoly_multi(entries_list[i], entries_list[j], p)  # length 2r-1
-                    # reduce modulo primitive polynomial f_d (length r+1) to get remainder length r
-                    rem = self.gfpoly_div(prod, f_d, p)  # remainder length r (highest->lowest)
-                    # find index of remainder among entries (map to 0..d-1)
-                    idx = self._coeffs_to_index(rem, p, r)
-                    M_d[i, j] = idx  # store 0-based element value
-                    # addition: coefficient-wise mod p
-                    summ = self.gfpoly_add(entries_list[i], entries_list[j], p)
-                    idx2 = self._coeffs_to_index(summ, p, r)
-                    A_d[i, j] = idx2
+        for i in range(self.d):
+            for j in range(self.d):
+                # multiply entry i and entry j as polynomials (coeff highest->lowest)
+                prod = self.gfpoly_multi(entries_list[i], entries_list[j], p)  # length 2r-1
+                # reduce modulo primitive polynomial f_d (length r+1) to get remainder length r
+                rem = self.gfpoly_div(prod, f_d, p)  # remainder length r (highest->lowest)
+                # find index of remainder among entries (map to 0..d-1)
+                idx = self._coeffs_to_index(rem, p, r)
+                M_d[i, j] = idx  # store 0-based element value
+                # addition: coefficient-wise mod p
+                summ = self.gfpoly_add(entries_list[i], entries_list[j], p)
+                idx2 = self._coeffs_to_index(summ, p, r)
+                A_d[i, j] = idx2
 
         return M_d, A_d
 
-    def est_shcoa(self, p: int, f_d: Sequence[int], *args) -> np.ndarray:
+    def est_shcoa(self, *args, p: int = None, f_d: Sequence[int] = None) -> np.ndarray:
         """
         Estimate Shapley values using COA for prime-power d (= p^r)
         - p: prime base
         - f_d: primitive polynomial coefficients (highest->lowest) of degree r (length r+1)
         Returns: 1 x d numpy array (row vector) of estimated Shapley values
         """
+        # If prime
+        if p is None:
+            p = self.d   
+        elif f_d is None:
+            raise ValueError("f_d must be provided for prime-power d")
+        
         # validate inputs
-        # check f_d length and coefficients: length should be r+1 where r = log_p(d)
+        # coefficients: length should be r+1 where r = log_p(d)
         r = 0
         tmp = 1
         while tmp < self.d:
             tmp *= p
             r += 1
-        if tmp != self.d:
-            raise ValueError("d must be p^r for integer r")
 
-        if len(f_d) != r + 1:
-            raise ValueError("f_d must have length r+1 (primitive polynomial coefficients)")
-
-        if max(f_d) >= p:
-            raise ValueError("coefficients of f_d must be < p")
-
+        # validate p prime
+        if not galois.is_prime(p):
+            raise ValueError("p should be prime")
+        
         m = self.d * (self.d - 1)
         if self.n % m != 0:
             raise ValueError("n should be a multiple of d*(d-1)")
 
-        k = self.n // m
         sh = np.zeros(self.d, dtype=float)
-
-        for t in range(k):
-            M_d, A_d = self.onecoa(p, f_d, rng = self.rng)
-            # Construction of COA
-            sample_perm = self.rng.permutation(np.arange(1, self.d))
-            firstr = np.concatenate(([0], sample_perm))  # length d, values in 0..d-1
-            
-            for i in range(0, self.d):
-                for j in range(1, self.d):
-                    perml = np.zeros(self.d, dtype=int)
-                    for k in range(0, self.d):
-                        e = M_d[j, int(firstr[k])]
-                        perml[k] = A_d[i, e]
+        
+        # If there is a prime number of players
+        if r == 1:
+            m = self.d * (self.d - 1)
+            if self.n % m != 0:
+                raise ValueError("n should be a multiple of d*(d-1)")
                     
-                    preC = 0.0
-                    for x in range(1, self.d + 1):
-                        subset = perml[:x]
-                        delta = float(self.val(subset, *args)) - preC
-                        sh[int(perml[x - 1])] += delta
-                        preC += delta
+            for perml in self.onecoa_prime_gen():
+                preC = 0.0
+                for i in range(1, self.d + 1):
+                    # Convert to a list to save on memory space
+                    delta = float(self.val(perml[:i].tolist(), *args)) - preC
+                    # add to the Shapley accumulator for the player perml[i-1]
+                    sh[int(perml[i-1]) - 1] += delta
+                    preC += delta
+        else: # Prime multiple number of players
+            # check f_d length
+            if len(f_d) != r + 1:
+                raise ValueError("f_d must have length r+1 (primitive polynomial coefficients)")
+
+            if max(f_d) >= p:
+                raise ValueError("coefficients of f_d must be < p")
+            
+            k = self.n // m
+
+            for _ in range(k):
+                # Construction of COA
+                M_d, A_d = self.onecoa(p, f_d, rng = self.rng)
+                sample_perm = self.rng.permutation(np.arange(1, self.d))
+                firstr = np.concatenate(([0], sample_perm))
+                
+                for i in range(0, self.d):
+                    for j in range(1, self.d):
+                        perml = np.zeros(self.d, dtype=np.int16)
+                        for k in range(0, self.d):
+                            preC = 0.0
+                            e = M_d[j, int(firstr[k])]
+                            perml[k] = A_d[i, e]
+                            delta = float(self.val(perml[:k + 1], *args)) - preC
+                            sh[int(perml[k])] += delta
+                            preC += delta
 
         sh = sh / float(self.n)
         return sh.reshape(1, -1)
