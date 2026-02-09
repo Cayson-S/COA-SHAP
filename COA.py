@@ -1,4 +1,4 @@
-from typing import Callable, List, Sequence, Tuple
+from typing import Callable, Sequence
 import numpy as np
 import itertools
 import galois
@@ -21,28 +21,13 @@ class COAExplainer():
     # ---------------------------
     # finite field COA (prime-power d = p^r)
     # ---------------------------
-    def _all_field_elements(self, p: int, r: int) -> List[Tuple[int]]:
-        """Return list of all r-length tuples with entries 0..p-1 in lexicographic order from itertools.product.
-        Each tuple represents polynomial coefficients highest->lowest.
-        """
-        # itertools.product yields tuples where the leftmost element changes slowest; rightmost changes fastest.
-        return list(itertools.product(range(p), repeat=r))
-
     def _coeffs_to_index(self, coeffs: Sequence[int], p: int, r: int) -> int:
         """Map coefficient tuple (highest->lowest) to an index 0..p^r-1 using base-p representation."""
         val = 0
         for c in coeffs:
             val = val * p + int(c)
         return val
-
-    def _index_to_coeffs(self, index: int, p: int, r: int) -> List[int]:
-        """Convert 0-based index to coefficient vector of length r (highest->lowest)."""
-        coeffs = [0] * r
-        for i in range(r - 1, -1, -1):
-            coeffs[i] = index % p
-            index //= p
-        return coeffs
-
+    
     def onecoa_prime_gen(self):
         """
         Generates the COA one line at a time and yeilds to not save it in memory.
@@ -67,6 +52,7 @@ class COAExplainer():
         """
         
         gf = galois.GF(p)
+        gf_f_d = galois.Poly(gf(f_d))
         # compute r such that p^r == d
         r = 0
         tmp = 1
@@ -82,28 +68,26 @@ class COAExplainer():
 
         # Build multiplication (M_d) and addition (A_d) tables on GF(d)
         # r > 1: represent elements as polynomials with coefficients 0..p-1, length r
-        entries = self._all_field_elements(p, r)  # list of tuples length d
-        # build maps from tuple->index quickly via base-p encoding
-        #tuple_to_index = {self._coeffs_to_index(t, p, r): idx for idx, t in enumerate(entries)}
+        entries = list(itertools.product(range(p), repeat = r)) # list of tuples length d
         # pre-generate list of coefficient lists for each element
-        entries_list = [list(t) for t in entries]
+        entries_list = [galois.Poly(gf(t)) for t in entries]
         
         M_d = np.zeros((self.d, self.d), dtype = np.int16)
         A_d = np.zeros((self.d, self.d), dtype = np.int16)
 
         for i in range(self.d):
             for j in range(self.d):
-                prod = galois.Poly((galois.Poly(gf(entries_list[i])) * galois.Poly(gf(entries_list[j]))).coeffs)
-
+                prod = galois.Poly((entries_list[i] * entries_list[j]).coeffs)
+                
                 if not np.any(prod):
                     raise ValueError("Error when attempting to create the COA: The polynomial divisor contains all zeroes")
                 
-                rem = prod % galois.Poly(gf(f_d))
+                rem = prod % gf_f_d
                 # find index of remainder among entries (map to 0..d-1)
                 idx = self._coeffs_to_index(rem.coeffs, p, r)
                 M_d[i, j] = idx  # store 0-based element value
                 # addition: coefficient-wise mod p
-                summ = (galois.Poly(gf(entries_list[i])) + galois.Poly(gf(entries_list[j]))).coeffs
+                summ = (entries_list[i] + entries_list[j]).coeffs
                 idx2 = self._coeffs_to_index(summ, p, r)
                 A_d[i, j] = idx2
 
@@ -111,7 +95,7 @@ class COAExplainer():
 
     def est_shcoa(self, *args, p: int = None, f_d: Sequence[int] = None) -> np.ndarray:
         """
-        Estimate Shapley values using COA for prime-power d (= p^r)
+        Estimate Shapley values using COA for prime-power d (p^r)
         - p: prime base
         - f_d: primitive polynomial coefficients (highest->lowest) of degree r (length r+1)
         Returns: 1 x d numpy array (row vector) of estimated Shapley values
