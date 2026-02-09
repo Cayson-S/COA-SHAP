@@ -19,87 +19,6 @@ class COAExplainer():
         self.rng = rng or np.random.default_rng()
 
     # ---------------------------
-    # polynomial operations (coeff vectors highest->lowest)
-    # ---------------------------
-    def poly_div(self, dividend: Sequence[int], divisor: Sequence[int]) -> List[int]:
-        """
-        Polynomial long division: dividend / divisor, coefficients are given highest-degree first.
-        Returns the remainder as a list of coefficients (highest-first).
-        Example:
-            dividend x^5 + 2 x^3 + 1 -> [1,0,2,0,0,1]
-            divisor x^4 + 2 -> [1,0,0,0,2]
-        This returns remainder coefficients.
-        """
-        f1 = list(dividend)
-        f2 = list(divisor)
-        d1 = len(f1) - 1
-        d2 = len(f2) - 1
-        if d1 < d2:
-            f1 = [0] * (d2 - d1) + f1
-            d1 = d2
-
-        dd = d1 - d2
-        divisend = f1.copy()
-        divisor = f2.copy()
-        b = [0] * (dd + 1)
-
-        for i in range(dd + 1):
-            if divisor[0] == 0:
-                raise ZeroDivisionError("Divisor leading coefficient is zero")
-            b_i = divisend[0] / divisor[0]
-            b[i] = b_i
-            # subtract b_i * divisor from divisend aligned at front
-            for j in range(d2 + 1):
-                divisend[j] = divisend[j] - b_i * divisor[j]
-            # drop the first element (shift)
-            divisend = divisend[1:]
-
-        # divisend is remainder (length d2)
-        # If elements are nearly integers, convert to int
-        # But we leave them as ints if they are exact ints
-        rem = [int(x) if abs(x - round(x)) < 1e-12 else x for x in divisend]
-        return rem
-
-    def gfpoly_div(self, f1: Sequence[int], f2: Sequence[int], s: int) -> List[int]:
-        """
-        Polynomial division over GF(s) (s prime): compute remainder of f1 / f2 with coefficients mod s.
-        Input coefficients highest->lowest.
-        """
-        r = self.poly_div(f1, f2)
-        # reduce modulo s and convert to integers in 0..s-1
-        gfr = [int(x) % s for x in r]
-        return gfr
-
-    def gfpoly_multi(self, f1: Sequence[int], f2: Sequence[int], s: int) -> List[int]:
-        """
-        Polynomial multiplication over GF(s). f1, f2 are coefficient lists highest->lowest.
-        Returns coefficients (highest->lowest) of product reduced modulo s.
-        """
-        d1 = len(f1)
-        d2 = len(f2)
-        hd = d1 + d2 - 1
-        res = [0] * hd
-        for i in range(d1):
-            for j in range(d2):
-                res[i + j] += f1[i] * f2[j]
-        gft = [int(v) % s for v in res]
-        return gft
-
-    def gfpoly_add(self, f1: Sequence[int], f2: Sequence[int], s: int) -> List[int]:
-        """
-        Polynomial addition over GF(s). Coefficients highest->lowest.
-        Pads shorter list on the front (higher degrees) with zeros to match lengths.
-        """
-        l1 = len(f1)
-        l2 = len(f2)
-        if l1 < l2:
-            f1 = [0] * (l2 - l1) + list(f1)
-        elif l2 < l1:
-            f2 = [0] * (l1 - l2) + list(f2)
-        f = [(int(a) + int(b)) % s for a, b in zip(f1, f2)]
-        return f
-
-    # ---------------------------
     # finite field COA (prime-power d = p^r)
     # ---------------------------
     def _all_field_elements(self, p: int, r: int) -> List[Tuple[int]]:
@@ -145,9 +64,12 @@ class COAExplainer():
             e.g. for x^2 + x + 2 -> [1,1,2]
         Returns array shape (d*(d-1), d) with entries in 1..d.
         """
+        
+        gf = galois.GF(p)
         # compute r such that p^r == d
         r = 0
         tmp = 1
+        
         while tmp < self.d:
             tmp *= p
             r += 1
@@ -170,15 +92,17 @@ class COAExplainer():
 
         for i in range(self.d):
             for j in range(self.d):
-                # multiply entry i and entry j as polynomials (coeff highest->lowest)
-                prod = self.gfpoly_multi(entries_list[i], entries_list[j], p)  # length 2r-1
-                # reduce modulo primitive polynomial f_d (length r+1) to get remainder length r
-                rem = self.gfpoly_div(prod, f_d, p)  # remainder length r (highest->lowest)
+                prod = galois.Poly((galois.Poly(gf(entries_list[i])) * galois.Poly(gf(entries_list[j]))).coeffs)
+
+                if not np.any(prod):
+                    raise ValueError("Error when attempting to create the COA: The polynomial divisor contains all zeroes")
+                
+                rem = prod % galois.Poly(gf(f_d))
                 # find index of remainder among entries (map to 0..d-1)
-                idx = self._coeffs_to_index(rem, p, r)
+                idx = self._coeffs_to_index(rem.coeffs, p, r)
                 M_d[i, j] = idx  # store 0-based element value
                 # addition: coefficient-wise mod p
-                summ = self.gfpoly_add(entries_list[i], entries_list[j], p)
+                summ = (galois.Poly(gf(entries_list[i])) + galois.Poly(gf(entries_list[j]))).coeffs
                 idx2 = self._coeffs_to_index(summ, p, r)
                 A_d[i, j] = idx2
 
